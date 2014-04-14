@@ -82,6 +82,27 @@ class JobSummary(object):
                 'created': self.getTotalJobs() 
                 }
 
+class ProgressSummary(object):
+    
+    def __init__(self , progressReport = None):
+        self.progress = {
+                 "totalLumis": 0,
+                 "events": 0,
+                 "size": 0
+         }
+        
+        if progressReport != None:
+            self.addProgressReport(progressReport)
+    
+    def addProgressReport(self, progressReport):
+        
+        #TODO need to validate the structure.
+        for key in self.progress.keys():
+            self.progress[key] += progressReport.get(key, 0)
+    
+    def getReport(self):
+        return self.progress
+            
 
 class RequestInfo(object):
     
@@ -115,22 +136,54 @@ class RequestInfo(object):
         else:
             return self.jobSummaryByAgent
     
+    def getTotalTopLevelJobs(self):
+        return self.data["total_jobs"]
+    
+    def getTotalTopLevelJobsInWMBS(self):
+        inWMBS = 0
+        for agentRequestInfo in self.data["AgentJobInfo"].values():
+            inWMBS += agentRequestInfo['status'].get('inWMBS', 0)
+        return inWMBS
+    
+    def getTotalInputLumis(self):
+        return self.data.get("input_lumis", "N/A")
+    
+    def getTotalInputEvents(self):
+        return self.data["input_events"]
+    
+    def getProgressSummaryByOutputDataset(self):
+        """
+        check sampleResult.json for datastructure
+        """
+        datasets = {};
+
+        for agentRequestInfo in self.data["AgentJobInfo"].values():
+            tasks = agentRequestInfo["tasks"]
+            for task in tasks:
+                for site in tasks[task].get("sites", []):
+                    for outputDS in tasks[task]["sites"][site].get("dataset", {}).keys():
+                        #TODO: need update the record instead of replacing.
+                        datasets.setdefault(outputDS, ProgressSummary())
+                        datasets[outputDS].addProgressReport(tasks[task]["sites"][site]["dataset"][outputDS])
+                        
+        return datasets;
+     
 class RequestInfoCollection(object):
     
     def __init__(self, data):
-        self.collection = []
+        self.collection = {}
         self.setData(data)
         
     def setData(self, data):
-        for requestInfo in data.values():
-            self.collection.append(RequestInfo(requestInfo))
+        for requestName, requestInfo in data.items():
+            self.collection[requestName] = RequestInfo(requestInfo)
     
     def getData(self):
         return self.collection
     
     def getJSONData(self):
         result = {}
-        for requestInfo in self.collection:
+        for requestInfo in self.collection.values():
             result[requestInfo.requestName] = {}
             for agentUrl, jobSummary in requestInfo.getJobSummaryByAgent().items():
                 result[requestInfo.requestName][agentUrl]= jobSummary.getJSONStatus()
