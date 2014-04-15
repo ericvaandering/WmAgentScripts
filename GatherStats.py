@@ -73,15 +73,10 @@ if __name__ == "__main__":
             totalJobs += jobs['created']
 
         if totalJobs and not report[wf].get('firstJobTime', None):
-            firstJobTime = time.time()
-            report[wf].update({'firstJobTime':firstJobTime,})
+            report[wf].update({'firstJobTime' : int(time.time())})
         if totalJobs and successJobs == totalJobs and not report[wf].get('lastJobTime', None):
-            report[wf].update({'lastJobTime' : time.time()})
+            report[wf].update({'lastJobTime' : int(time.time())})
 
-
-        startTime = None
-        endTime = None
-        complete90 = None
         finalStatus = None
         acquireTime = None
         closeoutTime = None
@@ -92,15 +87,11 @@ if __name__ == "__main__":
             if status['status'] == 'completed':
                 completedTime = status['update_time']
             if status['status'] == 'acquired':
-                startTime = status['update_time']
                 acquireTime = status['update_time']
             if status['status']	== 'closed-out':
-                endTime = status['update_time']
                 closeoutTime = status['update_time']
             if status['status']	== 'announced':
                 announcedTime = status['update_time']
-
-
 
         if totalJobs > 0:
             percentDone = (successJobs / totalJobs)*100.0
@@ -120,20 +111,18 @@ if __name__ == "__main__":
         if completedTime and not report[wf].get('completedTime', None):
             report[wf].update({'completedTime':completedTime})
 
-        report[wf].update({'priority':priority, 'percent':percentDone, 'start':startTime,
-                           'end':endTime, 'totalJobs':totalJobs, 'status':finalStatus,
-                           'type':requestType})
-        report[wf].update({'lumiPercent' : lumiPercent, 'eventPercent' : eventPercent}) # Consider not keeping, may blow up couch
+        report[wf].update({'priority':priority, 'totalJobs':totalJobs, 'status':finalStatus, 'type':requestType})
+        report[wf].update({'jobPercent':percentDone, 'lumiPercent' : lumiPercent, 'eventPercent' : eventPercent}) # Consider not keeping, may blow up couch
 
-        report[wf].setdefault('percents', {})
+        report[wf].setdefault('jobPercents', {})
         report[wf].setdefault('lumiPercents', {})
         report[wf].setdefault('eventPercents', {})
 
         for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99]:
-            percentReported = report[wf]['percents'].get(str(percentage), None)
+            percentReported = report[wf]['jobPercents'].get(str(percentage), None)
             if not percentReported and percentDone >= percentage:
                 print "Added job %s%% for workflow %s" % (percentage, wf)
-                report[wf]['percents'][percentage] = int(time.time())
+                report[wf]['jobPercents'][percentage] = int(time.time())
 
             percentReported = report[wf]['lumiPercents'].get(str(percentage), None)
             if not percentReported and lumiPercent >= percentage:
