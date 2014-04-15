@@ -36,6 +36,7 @@ if __name__ == "__main__":
     requests = WMStats.getRequestByStatus(WMStatsClient.ACTIVE_STATUS, jobInfoFlag = True)
     requestCollection = RequestInfoCollection(requests)
     result = requestCollection.getJSONData()
+    requestsDict = requestCollection.getData()
 
     for wf in result.keys():
 
@@ -44,6 +45,25 @@ if __name__ == "__main__":
         nJobs = requests[wf].get('total_jobs', 0)
         priority = requests[wf]['priority']
         requestType = requests[wf]['request_type']
+        datasetReports = requestsDict[wf].getProgressSummaryByOutputDataset()#[0].getReport()
+        targetLumis = requests[wf].get('input_lumis', 0)
+        targetEvents = requests[wf].get('input_events', 0)
+
+        eventPercent = 200
+        lumiPercent = 200
+        for dataset in datasetReports:
+            dsr = datasetReports[dataset].getReport()
+            events = dsr.get('events', 0)
+            lumis = dsr.get('totalLumis', 0)
+            if targetLumis:
+                lumiPercent = min(lumiPercent, lumis/targetLumis*100)
+            if targetEvents:
+                eventPercent = min(eventPercent, events/targetEvents*100)
+        if eventPercent > 100:
+            eventPercent = 0
+        if lumiPercent > 100:
+            lumiPercent = 0
+
 
         successJobs = 0
         totalJobs = 0
@@ -103,15 +123,28 @@ if __name__ == "__main__":
         report[wf].update({'priority':priority, 'percent':percentDone, 'start':startTime,
                            'end':endTime, 'totalJobs':totalJobs, 'status':finalStatus,
                            'type':requestType})
+        report[wf].update({'lumiPercent' : lumiPercent, 'eventPercent' : eventPercent}) # Consider not keeping, may blow up couch
+
         report[wf].setdefault('percents', {})
+        report[wf].setdefault('lumiPercents', {})
+        report[wf].setdefault('eventPercents', {})
 
         for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99]:
             percentReported = report[wf]['percents'].get(str(percentage), None)
-
             if not percentReported and percentDone >= percentage:
-                print "Added %s%% for workflow %s" % (percentage, wf)
-                updatedReport[wf] = True
-                report[wf]['percents'][percentage] = time.time()
+                print "Added job %s%% for workflow %s" % (percentage, wf)
+                report[wf]['percents'][percentage] = int(time.time())
+
+            percentReported = report[wf]['lumiPercents'].get(str(percentage), None)
+            if not percentReported and lumiPercent >= percentage:
+                print "Added lumi %s%% for workflow %s" % (percentage, wf)
+                report[wf]['lumiPercents'][percentage] = int(time.time())
+
+            percentReported = report[wf]['eventPercents'].get(str(percentage), None)
+            if not percentReported and eventPercent >= percentage:
+                print "Added event %s%% for workflow %s" % (percentage, wf)
+                report[wf]['eventPercents'][percentage] = int(time.time())
+
 
         newRecord = report[wf]
         if oldRecord != newRecord:
