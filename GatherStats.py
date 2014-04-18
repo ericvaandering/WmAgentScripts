@@ -6,20 +6,25 @@ import pdb
 import pprint
 import time
 
+from optparse import OptionParser
+
+from WMCoreService.CouchClient import CouchServer
+from WMCoreService.CouchClient import Document as CouchDoc
 from WMCoreService.WMStatsClient import WMStatsClient
 from WMCoreService.DataStruct.RequestInfoCollection import RequestInfoCollection
 
 
-
-
-#def conditionalUpdate(theDict, updateDict, theKey, theValue, updateKey):
-    #if not theDict.get(theKey, None):
-        #theDict.update(theKey, theValue)
-        #updateDict[updateKey] = True
-
-    #return
-
 if __name__ == "__main__":
+    parser = OptionParser()
+    parser.add_option("-s", "--server", dest="server",
+                    help="CouchDB server to write results to", )
+    parser.add_option("-d", "--database", dest="database", default='latency_analytics',
+                    help="CouchDB database for results")
+
+    (options, args) = parser.parse_args()
+
+    analyticsServer = CouchServer(options.server)
+    couchdb = analyticsServer.connectDatabase(options.database)
 
     try:
         with open('report.json', 'r') as reportFile:
@@ -27,7 +32,6 @@ if __name__ == "__main__":
     except IOError:
         print "No existing report. Starting a new one."
         report = {}
-    updatedReport = {}
 
     url = "https://cmsweb.cern.ch/couchdb/wmstats"
     WMStats = WMStatsClient(url)
@@ -41,6 +45,13 @@ if __name__ == "__main__":
     for wf in result.keys():
 
         oldRecord = copy.deepcopy(report.get(wf, None))
+
+        if couchdb.documentExists(wf):
+            oldCouchDoc = couchdb.document(wf)
+            wfExists = True
+        else:
+            oldCouchDoc = CouchDoc(id=wf)
+            wfExists = False
 
         nJobs = requests[wf].get('total_jobs', 0)
         priority = requests[wf]['priority']
@@ -99,8 +110,6 @@ if __name__ == "__main__":
             percentDone = 0
 
         newValue = report.setdefault(wf, {})
-        if newValue:
-            updatedReport[wf] = True
 
         if acquireTime and not report[wf].get('acquireTime', None):
             report[wf].update({'acquireTime':acquireTime})
@@ -111,36 +120,60 @@ if __name__ == "__main__":
         if completedTime and not report[wf].get('completedTime', None):
             report[wf].update({'completedTime':completedTime})
 
-        report[wf].update({'priority':priority, 'totalJobs':totalJobs, 'status':finalStatus, 'type':requestType})
-        report[wf].update({'jobPercent':percentDone, 'lumiPercent' : lumiPercent, 'eventPercent' : eventPercent}) # Consider not keeping, may blow up couch
-
-        report[wf].setdefault('jobPercents', {})
+        report[wf].update({'priority':priority, 'status':finalStatus, 'type':requestType})
+        report[wf].update({'totalLumis':targetLumis, 'totalEvents':targetEvents, })
         report[wf].setdefault('lumiPercents', {})
         report[wf].setdefault('eventPercents', {})
 
         for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99]:
-            percentReported = report[wf]['jobPercents'].get(str(percentage), None)
-            if not percentReported and percentDone >= percentage:
-                print "Added job %s%% for workflow %s" % (percentage, wf)
-                report[wf]['jobPercents'][percentage] = int(time.time())
 
             percentReported = report[wf]['lumiPercents'].get(str(percentage), None)
             if not percentReported and lumiPercent >= percentage:
-                print "Added lumi %s%% for workflow %s" % (percentage, wf)
                 report[wf]['lumiPercents'][percentage] = int(time.time())
 
             percentReported = report[wf]['eventPercents'].get(str(percentage), None)
             if not percentReported and eventPercent >= percentage:
-                print "Added event %s%% for workflow %s" % (percentage, wf)
                 report[wf]['eventPercents'][percentage] = int(time.time())
 
 
         newRecord = report[wf]
-        if oldRecord != newRecord:
-            print "Workflow updated: ", wf
+        newCouchDoc = copy.deepcopy(oldCouchDoc)
+        newCouchDoc.update(newRecord)
+
+        # Fix up existing JSON
+
+        for key in ['lumiPercents', 'eventPercents', 'jobPercents']:
+            if newCouchDoc.get(key, None):
+                for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99]:
+                    if newCouchDoc[key].get(percentage, None):
+                        newCouchDoc[key][str(percentage)] = int(newCouchDoc[key][percentage])
+                        del newCouchDoc[key][percentage]
+                    if newCouchDoc[key].get(str(percentage), None):
+                        newCouchDoc[key][str(percentage)] = int(newCouchDoc[key][str(percentage)])
+
+        for key in ['acquireTime', 'closeoutTime', 'completedTime', 'firstJobTime', 'lastJobTime', 'announcedTime']:
+            if newCouchDoc.get(key, None):
+                newCouchDoc[key] = int(newCouchDoc[key])
+
+        for key in ['jobPercent', 'lumiPercent', 'eventPercent']:
+            if newCouchDoc.get(key, None):
+                del newCouchDoc[key]
+
+        if oldCouchDoc != newCouchDoc:
+            if wfExists:
+                print "Workflow updated: ", wf
+            else:
+                print "Workflow created: ", wf
+
+            try:
+                couchdb.queue(newCouchDoc)
+            except:
+                print "Failed to queue ", newCouchDoc
+                pass # Bad JSON usually
+
+    couchdb.commit()
 
     print "\ntotal %s requests retrieved" % len(result)
 
     with open('report.json', 'w') as reportFile:
         json.dump(report, reportFile, indent=1)
-
