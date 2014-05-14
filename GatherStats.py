@@ -81,11 +81,13 @@ if __name__ == "__main__":
             jobs = result[wf][agent]
             successJobs += jobs['sucess']
             totalJobs += jobs['created']
-
-        if totalJobs and not report[wf].get('firstJobTime', None):
-            report[wf].update({'firstJobTime' : int(time.time())})
-        if totalJobs and successJobs == totalJobs and not report[wf].get('lastJobTime', None):
-            report[wf].update({'lastJobTime' : int(time.time())})
+        try:
+            if totalJobs and not report[wf].get('firstJobTime', None):
+                report[wf].update({'firstJobTime' : int(time.time())})
+            if totalJobs and successJobs == totalJobs and not report[wf].get('lastJobTime', None):
+                report[wf].update({'lastJobTime' : int(time.time())})
+        except:
+            pass
 
         # Figure out current status of workflow and transition times
         finalStatus = None
@@ -162,7 +164,6 @@ if __name__ == "__main__":
                 couchdb.queue(newCouchDoc)
             except:
                 print "Failed to queue ", newCouchDoc
-                pass # Bad JSON usually
 
     print "\ntotal %s requests retrieved" % len(result)
 
