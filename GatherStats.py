@@ -56,6 +56,16 @@ if __name__ == "__main__":
         requestType = requests[wf]['request_type']
         targetLumis = requests[wf].get('input_lumis', 0)
         targetEvents = requests[wf].get('input_events', 0)
+        campaign = requests[wf]['campaign']
+        prep_id = requests[wf]['prep_id']
+        outputdatasets = requests[wf]['outputdatasets']
+        inputdataset = requests[wf]['inputdataset']
+
+        outputTier = 'Unknown'
+        try:
+            outputTier = outputdatasets[0].split('/')[-1]
+        except:
+            pass
 
         # Calculate completion ratios for events and lumi sections, take minimum for all datasets
         eventPercent = 200
@@ -95,6 +105,8 @@ if __name__ == "__main__":
         closeoutTime = None
         completedTime = None
         announcedTime = None
+        newTime = None
+        requestDate = None
         for status in requests[wf]['request_status']:
             finalStatus = status['status']
             if status['status'] == 'completed':
@@ -105,6 +117,8 @@ if __name__ == "__main__":
                 closeoutTime = status['update_time']
             if status['status']	== 'announced':
                 announcedTime = status['update_time']
+            if status['status']	== 'new':
+                newTime = status['update_time']
 
         # Build or modify the report dictionary for the WF
         report.setdefault(wf, {})
@@ -117,20 +131,39 @@ if __name__ == "__main__":
             report[wf].update({'announcedTime':announcedTime})
         if completedTime and not report[wf].get('completedTime', None):
             report[wf].update({'completedTime':completedTime})
+        if newTime and not report[wf].get('newTime', None):
+            report[wf].update({'newTime':newTime})
+
+        try:
+            dt = requests[wf]['request_date']
+            requestDate = '%4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d' % tuple(dt)
+            report[wf].update({'requestDate' : requestDate})
+        except:
+            pass
 
         report[wf].update({'priority':priority, 'status':finalStatus, 'type':requestType})
         report[wf].update({'totalLumis':targetLumis, 'totalEvents':targetEvents, })
+        report[wf].update({'campaign' : campaign, 'prepID' : prep_id, 'outputTier' : outputTier, })
+        report[wf].update({'outputDatasets' : outputdatasets, 'inputDataset' : inputdataset, })
+
         report[wf].setdefault('lumiPercents', {})
         report[wf].setdefault('eventPercents', {})
-
-        for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99]:
+        lumiProgress = 0
+        eventProgress = 0
+        for percentage in [1, 10, 25, 50, 65, 75, 80, 85, 90, 95, 98, 99, 100]:
             percentReported = report[wf]['lumiPercents'].get(str(percentage), None)
             if not percentReported and lumiPercent >= percentage:
                 report[wf]['lumiPercents'][percentage] = int(time.time())
+            if lumiPercent >= percentage:
+                lumiProgress = percentage
 
             percentReported = report[wf]['eventPercents'].get(str(percentage), None)
             if not percentReported and eventPercent >= percentage:
                 report[wf]['eventPercents'][percentage] = int(time.time())
+            if eventPercent >= percentage:
+                eventProgress = percentage
+
+        report[wf].update({'eventProgress' : eventProgress, 'lumiProgress' : lumiProgress,  })
 
         newCouchDoc = copy.deepcopy(oldCouchDoc)
         newCouchDoc.update(report[wf])
@@ -138,7 +171,7 @@ if __name__ == "__main__":
         # Fix up existing JSON. Can eventually remove
         for key in ['lumiPercents', 'eventPercents', 'jobPercents']:
             if newCouchDoc.get(key, None):
-                for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99]:
+                for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99, 100]:
                     if newCouchDoc[key].get(percentage, None):
                         newCouchDoc[key][str(percentage)] = int(newCouchDoc[key][percentage])
                         del newCouchDoc[key][percentage]
@@ -161,6 +194,8 @@ if __name__ == "__main__":
                 print "Workflow created: ", wf
 
             try:
+                newCouchDoc['updateTime'] = int(time.time())
+                report[wf]['updateTime'] = int(time.time())
                 couchdb.queue(newCouchDoc)
             except:
                 print "Failed to queue ", newCouchDoc
