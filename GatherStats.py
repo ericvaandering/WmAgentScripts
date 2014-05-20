@@ -26,13 +26,6 @@ if __name__ == "__main__":
     analyticsServer = CouchServer(options.server)
     couchdb = analyticsServer.connectDatabase(options.database)
 
-    try:
-        with open('report.json', 'r') as reportFile:
-            report = json.load(reportFile)
-    except IOError:
-        print "No existing report. Starting a new one."
-        report = {}
-
     url = "https://cmsweb.cern.ch/couchdb/wmstats"
     WMStats = WMStatsClient(url)
     print "Getting job information from %s. Please wait." % url
@@ -41,7 +34,9 @@ if __name__ == "__main__":
     requestCollection = RequestInfoCollection(requests)
     result = requestCollection.getJSONData()
     requestsDict = requestCollection.getData()
+    print "Total %s requests retrieved\n" % len(result)
 
+    report = {}
     for wf in result.keys():
         # Store a copy of the CouchDB document so we can compare later before updating
         if couchdb.documentExists(wf):
@@ -50,6 +45,11 @@ if __name__ == "__main__":
         else:
             oldCouchDoc = CouchDoc(id=wf)
             wfExists = False
+
+        newCouchDoc = copy.deepcopy(oldCouchDoc)
+        ancientCouchDoc = copy.deepcopy(oldCouchDoc)
+        report[wf] = oldCouchDoc
+        # FIXME: remove report, only have two instances of couchDoc
 
         # Basic parameters of the workflow
         priority = requests[wf]['priority']
@@ -165,29 +165,10 @@ if __name__ == "__main__":
 
         report[wf].update({'eventProgress' : eventProgress, 'lumiProgress' : lumiProgress,  })
 
-        newCouchDoc = copy.deepcopy(oldCouchDoc)
         newCouchDoc.update(report[wf])
 
-        # Fix up existing JSON. Can eventually remove
-        for key in ['lumiPercents', 'eventPercents', 'jobPercents']:
-            if newCouchDoc.get(key, None):
-                for percentage in [1,10,25, 50, 65, 75, 80, 85, 90, 95, 98, 99, 100]:
-                    if newCouchDoc[key].get(percentage, None):
-                        newCouchDoc[key][str(percentage)] = int(newCouchDoc[key][percentage])
-                        del newCouchDoc[key][percentage]
-                    if newCouchDoc[key].get(str(percentage), None):
-                        newCouchDoc[key][str(percentage)] = int(newCouchDoc[key][str(percentage)])
-
-        for key in ['acquireTime', 'closeoutTime', 'completedTime', 'firstJobTime', 'lastJobTime', 'announcedTime']:
-            if newCouchDoc.get(key, None):
-                newCouchDoc[key] = int(newCouchDoc[key])
-
-        for key in ['jobPercent', 'lumiPercent', 'eventPercent']:
-            if newCouchDoc.get(key, None):
-                del newCouchDoc[key]
-
         # Queue the updated document for addition if it's changed.
-        if oldCouchDoc != newCouchDoc:
+        if ancientCouchDoc != newCouchDoc:
             if wfExists:
                 print "Workflow updated: ", wf
             else:
@@ -200,11 +181,6 @@ if __name__ == "__main__":
             except:
                 print "Failed to queue ", newCouchDoc
 
-    print "\ntotal %s requests retrieved" % len(result)
-
     # Commit all changes to CouchDB
     couchdb.commit()
 
-    # Write all changes to Report file
-    with open('report.json', 'w') as reportFile:
-        json.dump(report, reportFile, indent=1)
