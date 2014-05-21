@@ -1,8 +1,7 @@
 from __future__ import division
 
+import cjson
 import copy
-import json
-import pdb
 import pprint
 import time
 
@@ -151,15 +150,16 @@ if __name__ == "__main__":
         lumiProgress = 0
         eventProgress = 0
         for percentage in [1, 10, 25, 50, 65, 75, 80, 85, 90, 95, 98, 99, 100]:
-            percentReported = report[wf]['lumiPercents'].get(str(percentage), None)
+            percent = str(percentage)
+            percentReported = report[wf]['lumiPercents'].get(percent, None)
             if not percentReported and lumiPercent >= percentage:
-                report[wf]['lumiPercents'][percentage] = int(time.time())
+                report[wf]['lumiPercents'][percent] = int(time.time())
             if lumiPercent >= percentage:
                 lumiProgress = percentage
 
-            percentReported = report[wf]['eventPercents'].get(str(percentage), None)
+            percentReported = report[wf]['eventPercents'].get(percent, None)
             if not percentReported and eventPercent >= percentage:
-                report[wf]['eventPercents'][percentage] = int(time.time())
+                report[wf]['eventPercents'][percent] = int(time.time())
             if eventPercent >= percentage:
                 eventProgress = percentage
 
@@ -177,9 +177,10 @@ if __name__ == "__main__":
             try:
                 newCouchDoc['updateTime'] = int(time.time())
                 report[wf]['updateTime'] = int(time.time())
+                cjson.encode(newCouchDoc) # Make sure it encodes before trying to queue
                 couchdb.queue(newCouchDoc)
             except:
-                print "Failed to queue ", newCouchDoc
+                print "Failed to queue document:\n", pprint.pprint(newCouchDoc)
 
     # Commit all changes to CouchDB
     couchdb.commit()
