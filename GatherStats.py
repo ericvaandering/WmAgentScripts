@@ -58,13 +58,30 @@ if __name__ == "__main__":
         campaign = requests[wf]['campaign']
         prep_id = requests[wf]['prep_id']
         outputdatasets = requests[wf]['outputdatasets']
-        inputdataset = requests[wf]['inputdataset']
 
-        outputTier = 'Unknown'
-        try:
-            outputTier = outputdatasets[0].split('/')[-1]
-        except:
-            pass
+        # Can be an empty list, full list, empty string, or non-empty string!
+        inputdataset = requests[wf]['inputdataset']
+        if isinstance(inputdataset, (list,)):
+            if inputdataset:
+                inputdataset = inputdataset[0]
+            else:
+                inputdataset = ''
+
+        outputTier = 'GEN-SIM'
+        if inputdataset:
+            outputTier = 'Unknown'
+            inputTier = inputdataset.split('/')[-1]
+            if inputTier in ['GEN']:
+                outputTier = 'LHE'
+            if inputTier in ['RAW', 'RECO']:
+                outputTier = 'AOD'
+            if inputTier in ['GEN-SIM']:
+                outputTier = 'AODSIM'
+        if outputTier == 'GEN-SIM':
+            if len(outputdatasets) == 1:
+                testTier = outputdatasets[0].split('/')[-1]
+                if testTier in ['GEN']:
+                    outputTier = 'STEP0'
 
         # Calculate completion ratios for events and lumi sections, take minimum for all datasets
         eventPercent = 200
@@ -149,7 +166,7 @@ if __name__ == "__main__":
         report[wf].setdefault('eventPercents', {})
         lumiProgress = 0
         eventProgress = 0
-        for percentage in [1, 10, 25, 50, 65, 75, 80, 85, 90, 95, 98, 99, 100]:
+        for percentage in [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 99, 100]:
             percent = str(percentage)
             percentReported = report[wf]['lumiPercents'].get(percent, None)
             if not percentReported and lumiPercent >= percentage:
