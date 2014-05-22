@@ -11,7 +11,7 @@ import ROOT
 from WMCoreService.WMStatsClient import WMStatsClient
 from WMCoreService.DataStruct.RequestInfoCollection import RequestInfoCollection
 
-LAST_DAYS = 1.5 # Only things after 14:00 on April 15 might be correct
+LAST_DAYS = 10 # Only things after 14:00 on April 15 might be correct
 PERCENT_CHECK = '90'
 PERCENT_TYPE = 'eventPercents'
 
@@ -26,7 +26,7 @@ if __name__ == "__main__":
     wmLatencyH = ROOT.TH1F("wmLatency", "WMAgent Latency", 100, 0.0, 1.0)
     eventJobH = ROOT.TH1F("eventJobH", "Event-Job time",    100, -240, 240)
     lumiJobH = ROOT.TH1F("lumiJobH", "Lumi-Job time",      100, -240, 240)
-    eventLumiH = ROOT.TH1F("eventLumiH", "Event-Lumi time", 100, -240, 240)
+    eventLumiH = ROOT.TH1F("eventLumiH", "Event-Lumi time", 100, -5, 5)
 
     wf2D = ROOT.TH2F("wf2D", "Total Latency vs. Walltime",   60, 0.0, 1.2, 50, 0, 2400)
     wm2D = ROOT.TH2F("wm2D", "WMAgent Latency vs. Walltime", 60, 0.0, 1.2, 50, 0, 2400)
@@ -38,18 +38,21 @@ if __name__ == "__main__":
     currentTime = int(time.time())
     openWMAgentWorkflows = 0
     openOpsWorkflows = 0
+    totalWf = 0
     try:
         with open('report.json', 'r') as reportFile:
             report = json.load(reportFile)
 
         for wf in report:
+            totalWf += 1
             record = report[wf]
             priority = record['priority']
 
             endTime = max(record.get('announcedTime', 0), record.get('completedTime', 0))
             if abs(currentTime-endTime) > LAST_DAYS*24*3600:
                 continue
-
+            if priority < 100:
+                continue
             try:
                 wfLatency = latency(record['announcedTime'], record['acquireTime'],
                                     record[PERCENT_TYPE][PERCENT_CHECK])
@@ -91,6 +94,7 @@ if __name__ == "__main__":
                 print("Not all types of percent done available for", wf)
                 pass
         print("Number of open workflows:", openOpsWorkflows, "agent:", openWMAgentWorkflows)
+        print("Number of  workflows:", totalWf)
 
     except IOError:
         print("No existing report. Exiting.")
