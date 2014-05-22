@@ -117,14 +117,22 @@ if __name__ == "__main__":
 
         # Figure out current status of workflow and transition times
         finalStatus = None
-        acquireTime = None
-        closeoutTime = None
-        completedTime = None
-        announcedTime = None
         newTime = None
+        approvedTime = None
+        assignedTime = None
+        acquireTime = None
+        completedTime = None
+        closeoutTime = None
+        announcedTime = None
         requestDate = None
         for status in requests[wf]['request_status']:
             finalStatus = status['status']
+            if status['status']	== 'new':
+                newTime = status['update_time']
+            if status['status']	== 'assignment-approved':
+                approvedTime = status['update_time']
+            if status['status']	== 'assigned':
+                assignedTime = status['update_time']
             if status['status'] == 'completed':
                 completedTime = status['update_time']
             if status['status'] == 'acquired':
@@ -133,12 +141,14 @@ if __name__ == "__main__":
                 closeoutTime = status['update_time']
             if status['status']	== 'announced':
                 announcedTime = status['update_time']
-            if status['status']	== 'new':
-                newTime = status['update_time']
 
         # Build or modify the report dictionary for the WF
         report.setdefault(wf, {})
 
+        if approvedTime and not report[wf].get('approvedTime', None):
+            report[wf].update({'approvedTime':approvedTime})
+        if assignedTime and not report[wf].get('assignedTime', None):
+            report[wf].update({'assignedTime':assignedTime})
         if acquireTime and not report[wf].get('acquireTime', None):
             report[wf].update({'acquireTime':acquireTime})
         if closeoutTime and not report[wf].get('closeoutTime', None):
